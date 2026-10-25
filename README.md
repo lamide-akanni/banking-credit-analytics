@@ -1,4 +1,4 @@
-# Banking Credit Analytics: Approvals, Expected Loss and Portfolio Performance
+# Credit Analytics: Approvals, Expected Loss and Portfolio Performance
 
 Credit analytics across the loan lifecycle on 307,511 real loan applications and 3.8M monthly card records: who to approve, where losses come from, and where late customers stop recovering.
 
