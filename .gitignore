@@ -1,0 +1,9 @@
+# Raw Kaggle files are large (~560 MB); anyone can download them (see README)
+data/raw/*
+!data/raw/.gitkeep
+
+# Python and notebook clutter
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
