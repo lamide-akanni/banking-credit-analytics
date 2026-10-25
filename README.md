@@ -47,3 +47,18 @@ Shared functions live in [`src/credit_analytics.py`](src/credit_analytics.py), u
 
 
 **Tools:** Python, pandas, scikit-learn, matplotlib, Plotly, Streamlit
+
+
+### Connect:
+
+
+OLAMIDE AKANNI | Data Sci.
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/olamide-akanni-b240ab18a/)
+[![Substack](https://img.shields.io/badge/Substack-FF6719?style=for-the-badge&logo=substack&logoColor=white)](https://substack.com/@lamideakanni03)
+[![Medium](https://img.shields.io/badge/Medium-12100E?style=for-the-badge&logo=medium&logoColor=white)](https://medium.com/@akannilmd)
+[![Gmail](https://img.shields.io/badge/Gmail-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:akannilmd@gmail.com)
+
+---
+Feedback welcome!
+
