@@ -114,3 +114,80 @@ def affordability_table(df):
     t = df.groupby(band, observed=True)["TARGET"].agg(loans="size", bad_rate="mean")
     t["share_of_loans"] = t["loans"] / t["loans"].sum()
     return t.reset_index().rename(columns={"ANNUITY_TO_INCOME": "repayment_to_income"})
+
+def prepare_card_panel(cc, anchor="2019-01-01"):
+    """Turn credit_card_balance.csv into a monthly panel with real-looking dates.
+    MONTHS_BALANCE is relative, so it is mapped onto a calendar from an anchor date
+    (labels are illustrative). Accounts already open at the start of the data
+    window are dropped because their true start month is unknown."""
+    df = cc[["SK_ID_PREV", "MONTHS_BALANCE", "SK_DPD", "AMT_BALANCE"]].copy()
+    first = df.groupby("SK_ID_PREV")["MONTHS_BALANCE"].transform("min")
+    keep = first > df["MONTHS_BALANCE"].min()
+    df, first = df[keep], first[keep]
+
+    base = pd.Period(anchor, freq="M").ordinal
+    to_date = lambda m: pd.PeriodIndex.from_ordinals(base + np.asarray(m, dtype="int64"), freq="M").to_timestamp()
+
+    return pd.DataFrame({
+        "loan_id": df["SK_ID_PREV"].values,
+        "origination_date": to_date(first),
+        "snapshot_date": to_date(df["MONTHS_BALANCE"]),
+        "days_past_due": df["SK_DPD"].clip(lower=0).values,
+        "balance": df["AMT_BALANCE"].clip(lower=0).values,
+    })
+
+DPD_BUCKETS = [-1, 0, 30, 60, 90, np.inf]
+BUCKET_LABELS = ["Current", "1-30", "31-60", "61-90", "90+"]
+
+
+def add_bucket_and_mob(panel, vintage_freq="Q"):
+    """Add delinquency bucket, months on book (MOB) and vintage (origination quarter)."""
+    df = panel.copy()
+    df["bucket"] = pd.cut(df["days_past_due"], bins=DPD_BUCKETS, labels=BUCKET_LABELS)
+    df["mob"] = ((df["snapshot_date"].dt.year - df["origination_date"].dt.year) * 12
+                 + (df["snapshot_date"].dt.month - df["origination_date"].dt.month))
+    df["vintage"] = df["origination_date"].dt.to_period(vintage_freq).astype(str)
+    return df
+
+
+def vintage_curves(panel, bad_dpd=90, max_mob=24, min_accounts=200):
+    """Cumulative share of a vintage's accounts that have EVER been bad_dpd+ days late.
+    Denominator = all accounts opened in the vintage (closed accounts stay in),
+    so curves can only rise. Each vintage is shown only up to the month every
+    one of its accounts could have been observed."""
+    df = add_bucket_and_mob(panel)
+    data_end = df["snapshot_date"].max()
+    acc = df.groupby("loan_id").agg(vintage=("vintage", "first"), orig=("origination_date", "first"))
+    acc["first_bad_mob"] = df[df["days_past_due"] >= bad_dpd].groupby("loan_id")["mob"].min()
+    acc["observable"] = ((data_end.year - acc["orig"].dt.year) * 12
+                         + (data_end.month - acc["orig"].dt.month))
+    curves = {}
+    for v, g in acc.groupby("vintage"):
+        if len(g) < min_accounts:
+            continue
+        horizon = int(min(g["observable"].min(), max_mob))
+        curves[v] = pd.Series([(g["first_bad_mob"] <= m).mean() for m in range(horizon + 1)])
+    out = pd.DataFrame(curves).reindex(range(max_mob + 1))
+    return out.loc[:, out.notna().sum() >= 3]
+
+def roll_rates(panel, by="balance"):
+    """Month-to-month transition matrix between delinquency buckets.
+    by='balance' weights by amount owed; by='count' counts accounts."""
+    df = add_bucket_and_mob(panel).sort_values(["loan_id", "snapshot_date"])
+    df["next_bucket"] = df.groupby("loan_id")["bucket"].shift(-1)
+    df = df.dropna(subset=["next_bucket"])
+    if by == "balance":
+        m = pd.crosstab(df["bucket"], df["next_bucket"], values=df["balance"],
+                        aggfunc="sum", normalize="index")
+    else:
+        m = pd.crosstab(df["bucket"], df["next_bucket"], normalize="index")
+    return m.reindex(index=BUCKET_LABELS, columns=BUCKET_LABELS).fillna(0)
+
+def annualised_loss(panel, chargeoff_dpd=90):
+    """Balance on accounts reaching chargeoff_dpd+ for the first time,
+    divided by average monthly balance outstanding, scaled to a year."""
+    df = panel.sort_values(["loan_id", "snapshot_date"])
+    first_co = df[df["days_past_due"] >= chargeoff_dpd].groupby("loan_id").head(1)
+    months = df["snapshot_date"].dt.to_period("M")
+    avg_balance = df.groupby(months)["balance"].sum().mean()
+    return float(first_co["balance"].sum() / avg_balance * 12 / months.nunique())
